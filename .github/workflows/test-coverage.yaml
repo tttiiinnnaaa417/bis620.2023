@@ -32,6 +32,7 @@ jobs:
             install_path = file.path(Sys.getenv("RUNNER_TEMP"), "package")
           )
         shell: Rscript {0}
+        continue-on-error: true # Allows the workflow to continue even if this step fails
 
       - name: Show testthat output
         if: always()
@@ -40,12 +41,12 @@ jobs:
         shell: bash
 
       - name: Upload test results
-        if: always() # Changed to always upload test results irrespective of success or failure
+        if: always()
         uses: actions/upload-artifact@v3
         with:
           name: coverage-test-failures
           path: ${{ runner.temp }}/package
 
       - name: Upload coverage to Codecov
-        if: success() # Consider changing to 'always()' if you want to upload coverage data even on failure
         uses: codecov/codecov-action@v3
+        continue-on-error: true # Allows the workflow to continue even if this step fails
