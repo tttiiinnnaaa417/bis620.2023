@@ -38,16 +38,16 @@ jobs:
       - name: Show testthat output
         if: always()
         run: |
-          ## --------------------------------------------------------------------
           find ${{ runner.temp }}/package -name 'testthat.Rout*' -exec cat '{}' \; || true
         shell: bash
 
       - name: Upload test results
-        if: failure()
+        if: always() # Changed to always upload test results irrespective of success or failure
         uses: actions/upload-artifact@v3
         with:
           name: coverage-test-failures
           path: ${{ runner.temp }}/package
 
       - name: Upload coverage to Codecov
+        if: success() # Consider changing to 'always()' if you want to upload coverage data even on failure
         uses: codecov/codecov-action@v3
