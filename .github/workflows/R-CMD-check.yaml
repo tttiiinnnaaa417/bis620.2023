@@ -44,6 +44,11 @@ jobs:
           extra-packages: any::rcmdcheck
           needs: check
 
+      - name: Check R package
+        run: rcmdcheck::rcmdcheck(args = "--no-manual", error_on = "error", check_dir = "check")
+        env:
+          _R_CHECK_FORCE_SUGGESTS_: false
+
       - uses: r-lib/actions/check-r-package@v2
         with:
           upload-snapshots: true
