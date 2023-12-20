@@ -15,7 +15,8 @@ Imports:
   dplyr,
   ggplot2,
   purrr,
-  tidyr
+  tidyr,
+  randomForest
 Suggests: 
     knitr,
     rmarkdown,
