@@ -6,7 +6,9 @@
 # --------------------
 #' @param model Name of the Random Forest model, written in the form of model = name
 #' @param bar.color The desired color of the bars, written in the form of bar.color = color
-# --------------------
+#' @importFrom randomForest importance
+#' @importFrom graphics barplot
+#' @export
 rf.imp.barplot <- function(model, bar.color) {
   imp.feat <- importance(model, type = 1, sort = TRUE)
   print(imp.feat)
