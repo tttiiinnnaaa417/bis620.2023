@@ -2,5 +2,12 @@
 ^\.Rproj\.user$
 ^LICENSE\.md$
 ^data-raw$
-^README\.Rmd$
+^.DS_Store$
+^.Rhistory$
+^.Rproj.user$
 ^\.github$
+^\.git$
+^README\.Rmd$
+^codecov\.yml$
+^doc$
+^Meta$
