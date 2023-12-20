@@ -9,6 +9,7 @@
 #' @importFrom randomForest importance
 #' @importFrom graphics barplot
 #' @export
+
 rf.imp.barplot <- function(model, bar.color) {
   imp.feat <- importance(model, type = 1, sort = TRUE)
   print(imp.feat)
