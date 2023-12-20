@@ -1,0 +1,208 @@
+---
+title: "BIS 620 Final Project"
+author: "Emilia Liu & Tianyi Gao"
+date: "2023-12-20"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(warning = FALSE, message = FALSE) 
+```
+
+```{r, message=FALSE}
+library(haven)
+library(purrr)
+library(dplyr)
+library(ggplot2)
+library(gtsummary)
+library(tidyr)
+library(caret)
+library(randomForest)
+
+# prepare data
+load(file = "dl.rda")
+load(file = "adlb.rda") # dim: 125123 7
+load(file = "adsl.rda") # dim: 935 19
+```
+
+# Background and Motivation
+Clinical trial NCT00364013 was a randomized phase 3 study to determine the treatment effect of Panitumumab in combination with FOLFOX compared to FOLFOX alone as first line therapy for metastatic colorectal cancer. This trial was sponsored by Amgen. The trial data included multiple aspects, such as patients' baseline lab test results, disease progression status, and patients' demographic information, etc. Our project aims to examine the associations between disease progression status and patients' baseline clinical and demographic characteristics. Specifically, the response variable is PFSCR, which is a binary variable that indicates whether a patient's disease has progressed or they had died, or their disease was stable or even better. There are 16 potential predictors in this project, which are used for predicting patients' PFSCR status through logistic regression model and random forest algorithm.
+
+The motivations of this project include: (1) Identifying prognostic factors: identifying predictors of disease progression status can help determine prognostic factors that influence the course of the disease, which could be valuable for clinicians in making informed decisions about patient management and treatment strategies. (2) Early intervention and monitoring: predicting disease progression early on could let clinicians to intervene proactively and lead to better outcomes. Monitoring patients with higher progression/death risk could enable early detection and timely adjustments to treatment plans.
+
+# Data Cleaning
+```{r}
+# unique subjects
+length(unique(adlb$SUBJID)) # 935
+length(unique(adsl$SUBJID)) # 935
+
+# data cleaning
+nrow(adsl[!(is.na(adsl$ATRT)), ]) # 935, meaning no NA value in ATRT (actual treatment)
+nrow(adlb[adlb$LBBASE == "Y", ]) # 7399 rows of baseline lab test results
+
+adlb.base <- adlb |> 
+  select(SUBJID, LBTEST, LBBASE, LBSTRESN) |>
+  filter(LBBASE == "Y") |>
+  na.omit() # 7399
+
+# use each lab test as a covariate (column)
+adlb.base <- adlb.base |>
+  pivot_wider(names_from = LBTEST, values_from = LBSTRESN) |>
+  select(-LBBASE) |>
+  na.omit() # 864 9 (8 lab tests)
+
+# rename lab test covariates
+adlb.base <- rename(adlb.base,
+                    AlkalinePhosphatase = `Alkaline Phosphatase`,
+                    LactateDehydrogenase = `Lactate Dehydrogenase`,
+                    WhiteBloodCells = `White Blood Cells`,
+                    CarcinoembryonicAntigen = `Carcinoembryonic Antigen`)
+```
+
+```{r}
+# select variables of interest from adsl
+adsl.covar <- adsl |>
+  select(SUBJID, ATRT, PRSURG, PFSCR, LIVERMET, DIAGMONS, AGE, SEX, B_WEIGHT, B_HEIGHT, DIAGTYPE) |>
+  na.omit() # 923 11 (9 covariates; PFSCR is the response)
+
+# recode binary covariates
+# and add a new covariate BMI calculated from B_WEIGHT and B_HEIGHT
+adsl.covar <- adsl.covar |>
+  mutate(ATRT = case_when(ATRT == "FOLFOX alone" ~ "Single",
+                          ATRT == "Panitumumab + FOLFOX" ~ "Combo"),
+         BMI = B_WEIGHT/(B_HEIGHT/100)^2) |>
+  select(-c(B_WEIGHT, B_HEIGHT))
+
+# merge adlb.base (baseline lab results) and adsl.covar (subject covariates)
+data.merge <- merge(adlb.base, adsl.covar, by = "SUBJID") |>
+  select(-SUBJID) # 853 17
+```
+
+# Data Exploration
+```{r}
+# create new functions
+
+# (1) binary.barplot(mydata, x.vars, group.var)
+# --------------------
+# This function produces a sequence of multiple bar plots for independent variables of interest in a data frame, grouped and filled by the binary dependent variable. Each independent variable in the sequence will produce one bar plot.
+# --------------------
+# Inputs:
+# mydata: name of the data frame, written in the form of mydata = name
+# x.vars: a combined sequence of independent variables to be plotted, written in the form of x.vars = c("Var1", "Var2", "Var3", "...")
+# group.var: the binary dependent variable by which the bar plot will be grouped and filled, written in the form of group.var = "Var"
+# --------------------
+binary.barplot <- function(mydata, x.vars, group.var) {
+  for (x.var in x.vars) {
+    p <- ggplot(mydata, aes(x = .data[[x.var]], 
+                            group = .data[[group.var]], 
+                            fill = .data[[group.var]])) +
+      geom_bar() +
+      labs(title = paste("Bar plot for", x.var, "grouped by", group.var),
+           x = x.var,
+           y = "Count",
+           fill = group.var) +
+      theme_minimal()
+    
+    print(p)
+  }
+}
+
+# example usage:
+binary.barplot(mydata = data.merge, 
+               x.vars = c("AGE", "SEX", "LIVERMET", "DIAGTYPE"), 
+               group.var = "PFSCR")
+```
+
+```{r}
+# proportions summary table
+data.merge |>
+  select(PFSCR, SEX, ATRT, PRSURG, LIVERMET, DIAGTYPE) |>
+  tbl_summary(by = "PFSCR")
+```
+
+
+# Analysis
+
+## Logistic Regression
+```{r}
+# full model
+logifit1 <- glm(PFSCR ~ ., data = data.merge, family = "binomial")
+summary(logifit1)
+
+# backward feature selection using step AIC
+step(logifit1, direction = "both")
+
+# selected model
+logifit2 <- glm(PFSCR ~ AlkalinePhosphatase + LactateDehydrogenase + Hemoglobin + AGE,
+                data = data.merge, family = "binomial")
+summary(logifit2)
+```
+
+## Random Forest
+```{r}
+set.seed(123)
+
+# split data into training (70%) and test (30%)
+train.index <- createDataPartition(data.merge$PFSCR, p = 0.7, list = FALSE)
+train.data <- data.merge[train.index, ]
+test.data <- data.merge[-train.index, ]
+
+# fit RF model on training set and make predictions on test set
+rf.model <- randomForest(factor(PFSCR) ~ ., data = train.data, importance = TRUE)
+test.pred <- predict(rf.model, newdata = test.data, type = "response")
+
+# training error
+train.pred <- predict(rf.model, newdata = train.data, type = "response")
+train.error <- mean(train.pred != train.data$PFSCR)
+cat("Training Error:", train.error, "\n")
+
+# test error
+test.error <- mean(test.pred != test.data$PFSCR)
+cat("Test Error:", test.error, "\n")
+```
+
+```{r}
+# extract and plot variable importance
+varImpPlot(rf.model, type = 1, sort = TRUE)
+
+# create a new function
+
+# (2) rf.imp.barplot(model, bar.color)
+# --------------------
+# This function prints out the variable importance scores in a Random Forest model based on mean decrease in accuracy, and produces a horizontal bar plot with desired bar color to visualize the variable importance.
+# --------------------
+# Inputs:
+# model: name of the Random Forest model, written in the form of model = name
+# bar.color: the desired color of the bars, written in the form of bar.color = color
+# --------------------
+rf.imp.barplot <- function(model, bar.color) {
+  imp.feat <- importance(model, type = 1, sort = TRUE)
+  print(imp.feat)
+  
+  imp.feat <- as.array(imp.feat)
+  p <- barplot(imp.feat[,1],
+               names.arg = rownames(imp.feat),
+               main = "Variable Importance",
+               xlab = "Mean Decrease in Accuracy",
+               col = bar.color,
+               cex.names = 0.7,
+               horiz = TRUE,
+               las = 2)
+  
+  print(p)
+}
+
+# example usage
+rf.imp.barplot(model = rf.model, bar.color = "pink")
+```
+
+# Interpretation and conclusion
+Based on logistic regression results, the full model (with all 16 potential predictors) did not produce the best outcome. Instead, after forward and backward feature selection using the AIC criterion, four most significant predictors were chosen: baseline alkaline phosphatase level, baseline lactate dehydrogenase level, baseline hemoglobin level, and patient age. These four predictors gave us the most efficient logistic regression model, and it was shown that patients' baseline lab test results were generally important factors that influence disease progression status.
+
+Based on the random forest results, our model was able to produce a test error of lower than 12% (measured by the proportion of wrong classification among all predictions). Our model included 500 trees, with 4 variables tried at each split. Additionally, we explored the variable importance scores and ranking of all 16 predictors, based on mean decrease in accuracy. The results showed that the three most important variables contributing to PFSCR binary classification were baseline lactate dehydrogenase level, baseline white blood cells level, and baseline alkaline phosphatase level. The three least significant predictors were actual treatment, diagnosis type, and baseline carcinoembryonic antigen level. In general, the results from the random forest algorithm agreed with the results from the logistic regression model, but differed slightly on the conclusion of the importance of some variables such as patient age.
+
+
+
+
+
+
