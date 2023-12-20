@@ -16,7 +16,10 @@ Imports:
   ggplot2,
   purrr,
   tidyr,
-  randomForest
+  randomForest,
+  caret,
+  haven,
+  gtsummary
 Suggests: 
     knitr,
     rmarkdown,
