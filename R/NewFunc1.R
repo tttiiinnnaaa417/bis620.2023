@@ -9,7 +9,12 @@
 #' written in the form of x.vars = c("Var1", "Var2", "Var3", "...")
 #' @param group.var The binary dependent variable by which the bar plot will be grouped and filled, 
 #' written in the form of group.var = "Var"
-# --------------------
+#' @importFrom ggplot2 ggplot
+#' @importFrom ggplot2 aes
+#' @importFrom ggplot2 geom_bar
+#' @importFrom ggplot2 labs
+#' @importFrom ggplot2 theme_minimal
+#' @export
 binary.barplot <- function(mydata, x.vars, group.var) {
   for (x.var in x.vars) {
     p <- ggplot(mydata, aes(x = .data[[x.var]], 
