@@ -1,8 +1,6 @@
-#' Social Vulnerability Data
+#' adsl
 #'
-#' CDC Social Vulnerability Index data in the US in 2018
-#'
-#' @name svi
+#' @name adsl
 #' @docType data
 #' @keywords data
 NULL
