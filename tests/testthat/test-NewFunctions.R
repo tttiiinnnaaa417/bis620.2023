@@ -1,3 +1,6 @@
+library(testthat)
+library(ggplot2)
+library(randomForest)
 test_that("binary.barplot returns plots", {
   expect_silent({
     data(adsl)
